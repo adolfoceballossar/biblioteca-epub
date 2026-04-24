@@ -119,13 +119,31 @@ if catalogo_texto:
                             
                             prompt_completo = f"[INSTRUCCIONES DEL SISTEMA]:\n{system_prompt}\n\n[CONSULTA DEL USUARIO]:\n{pregunta}"
                             
-                            modelo = genai.GenerativeModel('gemini-1.5-flash')
+                            # --- SOLUCIÓN INFALIBLE (Búsqueda dinámica de modelo) ---
+                            # En lugar de adivinar el nombre del modelo, le pedimos a Google la lista 
+                            # de modelos exactos a los que tiene acceso tu API Key y usamos el primero válido.
+                            modelo_valido = 'gemini-1.5-flash' # Valor por defecto
+                            try:
+                                para_usar = None
+                                for m in genai.list_models():
+                                    if 'generateContent' in m.supported_generation_methods:
+                                        if '1.5-flash' in m.name:
+                                            para_usar = m.name
+                                            break
+                                        elif not para_usar:
+                                            para_usar = m.name # Guarda el primero que encuentre por si acaso
+                                if para_usar:
+                                    modelo_valido = para_usar
+                            except Exception:
+                                pass # Si falla la lista, se queda con el valor por defecto
+                            
+                            modelo = genai.GenerativeModel(modelo_valido)
                             respuesta = modelo.generate_content(prompt_completo)
                             
                             texto_respuesta = respuesta.text
                             st.markdown(texto_respuesta)
                             st.session_state.mensajes.append({"role": "assistant", "content": texto_respuesta})
                         except Exception as e:
-                            st.error(f"¡Ups! Hubo un fallo en la conexión: {e}")
+                            st.error(f"¡Ups! Hubo un fallo en la conexión con la IA: {e}")
 else:
     st.info("Esperando catálogo...")
