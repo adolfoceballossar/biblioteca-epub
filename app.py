@@ -119,12 +119,8 @@ if catalogo_texto:
                             
                             prompt_completo = f"[INSTRUCCIONES DEL SISTEMA]:\n{system_prompt}\n\n[CONSULTA DEL USUARIO]:\n{pregunta}"
                             
-                            try:
-                                modelo = genai.GenerativeModel('gemini-1.5-flash')
-                                respuesta = modelo.generate_content(prompt_completo)
-                            except Exception:
-                                modelo = genai.GenerativeModel('gemini-pro')
-                                respuesta = modelo.generate_content(prompt_completo)
+                            modelo = genai.GenerativeModel('gemini-1.5-flash')
+                            respuesta = modelo.generate_content(prompt_completo)
                             
                             texto_respuesta = respuesta.text
                             st.markdown(texto_respuesta)
