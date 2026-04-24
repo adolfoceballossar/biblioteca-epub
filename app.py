@@ -32,7 +32,7 @@ def procesar_catalogo(contenido_texto):
     return pd.DataFrame(libros)
 
 # Título de la App
-st.title("📚 Mi Biblioteca ePub Institucional")
+st.title("📚 La Biblioteca ePub de Adolfo")
 st.markdown("Explora el catálogo de más de 152,000 ePubs y pide recomendaciones a la IA.")
 
 # 4. Carga automática del catálogo para tus compañeros
