@@ -107,19 +107,24 @@ if catalogo_texto:
                             muestra = df_libros.sample(n=min(500, len(df_libros)))
                             catalogo_str = "\n".join([f"- {row['Título']} (por {row['Autor']})" for _, row in muestra.iterrows()])
                             
-                            system_prompt = f"""Eres un bibliotecario experto. Estás hablando con un grupo de compañeros de trabajo.
-                            (Nota secreta para la IA: El dueño de la colección vive en Coquimbito, está casado con Alejandra, tiene dos hijos: Lautaro de 11 y Lucas de 5, un perro Paco y un gato Pancho. Si la recomendación se presta, usa esta info para dar un toque cálido).
+                            system_prompt = f"""Eres un bibliotecario experto y amigable. Estás hablando con un grupo de compañeros de trabajo que buscan recomendaciones de lectura de una inmensa colección compartida.
                             
                             REGLAS:
                             1. RECOMIENDA SOLO libros que estén en el catálogo adjunto.
                             2. Usa negritas para destacar los títulos.
-                            3. Da 2 o 3 sugerencias breves y explica por qué.
+                            3. Da 2 o 3 sugerencias breves y explica por qué crees que les gustarán.
                             
                             CATÁLOGO DISPONIBLE:
                             {catalogo_str}"""
                             
-                            modelo = genai.GenerativeModel('gemini-1.5-flash', system_instruction=system_prompt)
-                            respuesta = modelo.generate_content(pregunta)
+                            prompt_completo = f"[INSTRUCCIONES DEL SISTEMA]:\n{system_prompt}\n\n[CONSULTA DEL USUARIO]:\n{pregunta}"
+                            
+                            try:
+                                modelo = genai.GenerativeModel('gemini-1.5-flash')
+                                respuesta = modelo.generate_content(prompt_completo)
+                            except Exception:
+                                modelo = genai.GenerativeModel('gemini-pro')
+                                respuesta = modelo.generate_content(prompt_completo)
                             
                             texto_respuesta = respuesta.text
                             st.markdown(texto_respuesta)
