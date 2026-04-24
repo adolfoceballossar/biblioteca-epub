@@ -112,7 +112,7 @@ if catalogo_texto:
                             REGLAS:
                             1. RECOMIENDA SOLO libros que estén en el catálogo adjunto.
                             2. Usa negritas para destacar los títulos.
-                            3. Da 2 o 3 sugerencias breves y explica por qué crees que les gustarán.
+                            3. Da 5 o 6 sugerencias breves y explica por qué crees que les gustarán.
                             
                             CATÁLOGO DISPONIBLE:
                             {catalogo_str}"""
