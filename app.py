@@ -87,42 +87,82 @@ if catalogo_texto:
                     {"role": "assistant", "content": "¡Hola! Soy el asistente de la biblioteca. Pídeme recomendaciones por género, estado de ánimo o autor. ¿Qué te gustaría leer?"}
                 ]
             
-            # Mostrar mensajes anteriores
+            # Mostrar mensajes anteriores y procesar enlaces a catálogo
             for msg in st.session_state.mensajes:
                 with st.chat_message(msg["role"]):
-                    st.markdown(msg["content"])
+                    if msg["role"] == "assistant":
+                        # Formateamos el texto para que las etiquetas <libro> se vean en negritas
+                        texto_mostrar = re.sub(r'<libro>(.*?)</libro>', r'**\1**', msg["content"], flags=re.IGNORECASE)
+                        st.markdown(texto_mostrar)
+                        
+                        # Extraemos los títulos para crear los "hipervínculos" interactivos
+                        libros_mencionados = list(set(re.findall(r'<libro>(.*?)</libro>', msg["content"], flags=re.IGNORECASE)))
+                        
+                        if libros_mencionados:
+                            st.markdown("---")
+                            st.caption("🔍 **Acceso rápido al explorador del catálogo:**")
+                            for titulo in libros_mencionados:
+                                # Creamos un desplegable por cada libro recomendado
+                                with st.expander(f"📚 Ver detalles de '{titulo}' en la biblioteca"):
+                                    # Usamos regex=False para que no confunda símbolos en el título
+                                    filtro_ia = df_libros[
+                                        df_libros['Título'].str.contains(titulo, case=False, na=False, regex=False) |
+                                        df_libros['Autor'].str.contains(titulo, case=False, na=False, regex=False)
+                                    ]
+                                    if not filtro_ia.empty:
+                                        st.dataframe(filtro_ia, use_container_width=True, hide_index=True)
+                                    else:
+                                        st.warning("El libro existe pero la búsqueda exacta requiere usar la pestaña 'Explorar Catálogo'.")
+                    else:
+                        st.markdown(msg["content"])
             
             # Caja de texto para el usuario
-            if pregunta := st.chat_input("Ej: Recomiéndame un buen libro de misterio..."):
+            if pregunta := st.chat_input("Ej: Recomiéndame todos los libros de Stephen King..."):
                 # Mostrar pregunta del usuario
                 st.session_state.mensajes.append({"role": "user", "content": pregunta})
-                with st.chat_message("user"):
-                    st.markdown(pregunta)
-                    
-                # Responder con IA
+                st.rerun() # Recargar para que aparezca la pregunta inmediatamente antes de pensar
+                
+            # Si el último mensaje es del usuario, procesamos la respuesta de la IA
+            if st.session_state.mensajes[-1]["role"] == "user":
+                pregunta_actual = st.session_state.mensajes[-1]["content"]
                 with st.chat_message("assistant"):
                     with st.spinner("Revisando la inmensa biblioteca..."):
                         try:
-                            # Tomamos una muestra para no saturar a la IA
-                            muestra = df_libros.sample(n=min(500, len(df_libros)))
+                            # --- NUEVO: PRE-FILTRADO INTELIGENTE ---
+                            # Extraemos palabras de la pregunta para asegurar que mandamos al autor correcto a la IA
+                            palabras_usuario = re.findall(r'\b\w{4,}\b', pregunta_actual.lower())
+                            
+                            if palabras_usuario:
+                                score = pd.Series(0, index=df_libros.index)
+                                textos_busqueda = (df_libros['Título'].fillna('') + " " + df_libros['Autor'].fillna('')).str.lower()
+                                
+                                for p in palabras_usuario:
+                                    score += textos_busqueda.str.contains(p, regex=False).astype(int)
+                                
+                                df_temp = df_libros.copy()
+                                df_temp['score'] = score
+                                df_top = df_temp.sort_values(by='score', ascending=False).head(1000)
+                                muestra = df_top.drop(columns=['score']).sample(frac=1).reset_index(drop=True)
+                            else:
+                                muestra = df_libros.sample(n=min(1000, len(df_libros)))
+
                             catalogo_str = "\n".join([f"- {row['Título']} (por {row['Autor']})" for _, row in muestra.iterrows()])
                             
                             system_prompt = f"""Eres un bibliotecario experto y amigable. Estás hablando con un grupo de compañeros de trabajo que buscan recomendaciones de lectura de una inmensa colección compartida.
                             
-                            REGLAS:
+                            REGLAS ESTRICTAS:
                             1. RECOMIENDA SOLO libros que estén en el catálogo adjunto.
-                            2. Usa negritas para destacar los títulos.
-                            3. Da 5 o 6 sugerencias breves y explica por qué crees que les gustarán.
+                            2. OBLIGATORIO: Cada vez que menciones el título de un libro, debes envolverlo con las etiquetas <libro> y </libro>. Ejemplo: Te recomiendo leer <libro>El Resplandor</libro>.
+                            3. BÚSQUEDA GENERAL: Si piden recomendaciones por género o trama, da 5 o 6 sugerencias breves y explica por qué.
+                            4. BÚSQUEDA POR AUTOR: Si el usuario te pregunta por un AUTOR, DEBES IGNORAR el límite de 5 o 6 y hacer una LISTA COMPLETA de TODOS los libros de ese autor que encuentres en tu catálogo.
                             
                             CATÁLOGO DISPONIBLE:
                             {catalogo_str}"""
                             
-                            prompt_completo = f"[INSTRUCCIONES DEL SISTEMA]:\n{system_prompt}\n\n[CONSULTA DEL USUARIO]:\n{pregunta}"
+                            prompt_completo = f"[INSTRUCCIONES DEL SISTEMA]:\n{system_prompt}\n\n[CONSULTA DEL USUARIO]:\n{pregunta_actual}"
                             
-                            # --- SOLUCIÓN INFALIBLE (Búsqueda dinámica de modelo) ---
-                            # En lugar de adivinar el nombre del modelo, le pedimos a Google la lista 
-                            # de modelos exactos a los que tiene acceso tu API Key y usamos el primero válido.
-                            modelo_valido = 'gemini-1.5-flash' # Valor por defecto
+                            # Búsqueda dinámica de modelo
+                            modelo_valido = 'gemini-1.5-flash'
                             try:
                                 para_usar = None
                                 for m in genai.list_models():
@@ -131,19 +171,21 @@ if catalogo_texto:
                                             para_usar = m.name
                                             break
                                         elif not para_usar:
-                                            para_usar = m.name # Guarda el primero que encuentre por si acaso
+                                            para_usar = m.name
                                 if para_usar:
                                     modelo_valido = para_usar
                             except Exception:
-                                pass # Si falla la lista, se queda con el valor por defecto
+                                pass
                             
                             modelo = genai.GenerativeModel(modelo_valido)
                             respuesta = modelo.generate_content(prompt_completo)
                             
                             texto_respuesta = respuesta.text
-                            st.markdown(texto_respuesta)
                             st.session_state.mensajes.append({"role": "assistant", "content": texto_respuesta})
+                            st.rerun() # Recargamos para que se renderice el texto y los expanders del catálogo
+                            
                         except Exception as e:
                             st.error(f"¡Ups! Hubo un fallo en la conexión con la IA: {e}")
+                            st.session_state.mensajes.pop() # Quitamos el mensaje del usuario si falla para que intente de nuevo
 else:
     st.info("Esperando catálogo...")
